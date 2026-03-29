@@ -56,9 +56,9 @@ DB_PATH = os.environ.get("BOOK_LIBRARY_DB_PATH",
 CHROMA_PATH = os.environ.get("BOOK_LIBRARY_CHROMA_PATH",
                              os.path.expanduser("~/.book-library/chroma"))
 INBOX_PATH = os.environ.get("BOOK_LIBRARY_INBOX",
-                            "/Volumes/Documents/BookInbox")
-PROCESSED_PATH = os.environ.get("BOOK_LIBRARY_PROCESSED",
-                                os.path.join(INBOX_PATH, "processed"))
+                            "/Volumes/Documents/BookLibrary/inbox")
+COLLECTIONS_PATH = os.environ.get("BOOK_LIBRARY_COLLECTIONS",
+                                  "/Volumes/Documents/BookLibrary/collections")
 EBOOK_CONVERT = os.environ.get("CALIBRE_EBOOK_CONVERT",
                                "/opt/homebrew/bin/ebook-convert")
 
@@ -422,14 +422,15 @@ def ingest_single_book(file_path: str, conn: sqlite3.Connection) -> dict:
         )
         conn.commit()
 
-        # Move to processed
-        os.makedirs(PROCESSED_PATH, exist_ok=True)
-        dest = os.path.join(PROCESSED_PATH, Path(file_path).name)
+        # Move to collections/<category>/
+        category_dir = os.path.join(COLLECTIONS_PATH, category)
+        os.makedirs(category_dir, exist_ok=True)
+        dest = os.path.join(category_dir, Path(file_path).name)
         if os.path.abspath(file_path) != os.path.abspath(dest):
             counter = 1
             while os.path.exists(dest):
                 stem = Path(file_path).stem
-                dest = os.path.join(PROCESSED_PATH, f"{stem}_{counter}{ext}")
+                dest = os.path.join(category_dir, f"{stem}_{counter}{ext}")
                 counter += 1
             shutil.move(file_path, dest)
 
@@ -748,6 +749,7 @@ async def handle_get_library_status(arguments: dict) -> Sequence[TextContent]:
     lines.append(f"  Database: {DB_PATH}")
     lines.append(f"  ChromaDB: {CHROMA_PATH}")
     lines.append(f"  Inbox: {INBOX_PATH}")
+    lines.append(f"  Collections: {COLLECTIONS_PATH}")
 
     return [TextContent(type="text", text="\n".join(lines))]
 
