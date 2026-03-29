@@ -527,18 +527,39 @@ async def handle_search_books(arguments: dict) -> Sequence[TextContent]:
         return [TextContent(type="text", text="Library is empty. Use ingest_books to add books first.")]
 
     # Build filter
-    where = {}
-    if category:
-        where["category"] = category
-    if book_title:
-        where["book_title"] = {"$contains": book_title}
+    where = None
+    if category and book_title:
+        # Look up book_id from SQLite for title filter
+        conn = get_db()
+        rows = conn.execute(
+            "SELECT id FROM books WHERE title LIKE ? AND ingestion_status='completed'",
+            (f"%{book_title}%",)
+        ).fetchall()
+        conn.close()
+        if rows:
+            book_ids = [r[0] for r in rows]
+            where = {"$and": [{"category": category}, {"book_id": {"$in": book_ids}}]}
+        else:
+            where = {"category": category}
+    elif category:
+        where = {"category": category}
+    elif book_title:
+        conn = get_db()
+        rows = conn.execute(
+            "SELECT id FROM books WHERE title LIKE ? AND ingestion_status='completed'",
+            (f"%{book_title}%",)
+        ).fetchall()
+        conn.close()
+        if rows:
+            book_ids = [r[0] for r in rows]
+            where = {"book_id": {"$in": book_ids}}
 
     # Embed query and search
     query_emb = get_query_embedding(query)
     results = collection.query(
         query_embeddings=[query_emb],
         n_results=limit,
-        where=where if where else None,
+        where=where,
         include=["documents", "metadatas", "distances"]
     )
 
