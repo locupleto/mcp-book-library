@@ -1,0 +1,8 @@
+# MCP Server Framework
+mcp>=1.9.2
+
+# Vector database
+chromadb>=1.5.5
+
+# Google Gemini SDK (embeddings + classification)
+google-genai>=1.0.0

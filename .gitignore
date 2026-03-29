@@ -1,0 +1,25 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Package artifacts
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Environment files
+.env
+
+# OS files
+.DS_Store
+
+# Data files (stored outside repo)
+*.db
+chroma/
