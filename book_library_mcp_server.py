@@ -557,14 +557,18 @@ async def handle_search_books(arguments: dict) -> Sequence[TextContent]:
 
     # Embed query and search
     query_emb = get_query_embedding(query)
-    results = collection.query(
-        query_embeddings=[query_emb],
-        n_results=limit,
-        where=where,
-        include=["documents", "metadatas", "distances"]
-    )
+    try:
+        results = collection.query(
+            query_embeddings=[query_emb],
+            n_results=limit,
+            where=where,
+            include=["documents", "metadatas", "distances"]
+        )
+    except Exception as e:
+        logger.error(f"ChromaDB query failed: {e}")
+        return [TextContent(type="text", text=f"Search error: {str(e)}")]
 
-    if not results["documents"] or not results["documents"][0]:
+    if not results or not results.get("documents") or not results["documents"][0]:
         return [TextContent(type="text", text=f"No results found for '{query}'.")]
 
     lines = [f"Search results for '{query}' ({len(results['documents'][0])} matches):\n"]
