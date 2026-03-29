@@ -63,7 +63,7 @@ EBOOK_CONVERT = os.environ.get("CALIBRE_EBOOK_CONVERT",
                                "/opt/homebrew/bin/ebook-convert")
 
 SUPPORTED_FORMATS = {'.epub', '.mobi', '.azw3', '.azw', '.pdf', '.txt'}
-EMBEDDING_MODEL = "gemini-embedding-exp-03-07"
+EMBEDDING_MODEL = "gemini-embedding-001"
 CLASSIFICATION_MODEL = "gemini-2.0-flash"
 CHUNK_SIZE = 1500  # characters
 CHUNK_OVERLAP = 200  # characters
