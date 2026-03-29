@@ -327,7 +327,7 @@ def convert_to_text(file_path: str) -> str:
     try:
         result = subprocess.run(
             [EBOOK_CONVERT, file_path, tmp_path],
-            capture_output=True, text=True, timeout=120
+            capture_output=True, text=True, timeout=300
         )
         if result.returncode != 0:
             raise RuntimeError(f"ebook-convert failed: {result.stderr[:500]}")
