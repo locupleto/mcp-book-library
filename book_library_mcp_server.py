@@ -72,7 +72,7 @@ EMBEDDING_BATCH_SIZE = 100
 VALID_CATEGORIES = [
     "Finance", "Trading", "Philosophy", "Technology", "Health", "Fiction",
     "Self-Help", "Science", "History", "Business", "Programming",
-    "Psychology", "Spirituality", "Education", "Cooking", "Other"
+    "Psychology", "Spirituality", "Education", "Cooking", "S&C Magazine", "Other"
 ]
 
 # Initialize MCP server
@@ -579,6 +579,12 @@ async def handle_search_books(arguments: dict) -> Sequence[TextContent]:
         lines.append(f"--- Result {i+1} (relevance: {score:.2f}) ---")
         lines.append(f"Book: {meta['book_title']} by {meta['author']} [{meta['category']}]")
         lines.append(f"Position: chunk {meta['chunk_index']+1}/{meta['total_chunks']}")
+        article_pdf = meta.get('article_pdf')
+        magazine_pdf = meta.get('magazine_pdf')
+        if article_pdf:
+            lines.append(f"Article: {article_pdf}")
+        if magazine_pdf:
+            lines.append(f"Magazine: {magazine_pdf}")
         lines.append(f"\n{doc[:800]}{'...' if len(doc) > 800 else ''}\n")
 
     return [TextContent(type="text", text="\n".join(lines))]
@@ -626,6 +632,12 @@ async def handle_ask_about_book(arguments: dict) -> Sequence[TextContent]:
     )):
         score = 1 - dist
         lines.append(f"--- Passage {i+1} (relevance: {score:.2f}, chunk {meta['chunk_index']+1}/{meta['total_chunks']}) ---")
+        article_pdf = meta.get('article_pdf')
+        magazine_pdf = meta.get('magazine_pdf')
+        if article_pdf:
+            lines.append(f"Article: {article_pdf}")
+        if magazine_pdf:
+            lines.append(f"Magazine: {magazine_pdf}")
         lines.append(f"{doc}\n")
 
     return [TextContent(type="text", text="\n".join(lines))]
@@ -661,10 +673,20 @@ async def handle_list_books(arguments: dict) -> Sequence[TextContent]:
         lines.append("")
 
     current_cat = None
+    cat_count = 0
+    cat_totals = {c: n for c, n in categories} if categories else {}
     for title, author, cat, date_added, chunks, status in rows:
         if cat != current_cat:
             current_cat = cat
+            cat_count = 0
+            total = cat_totals.get(cat, 0)
+            if cat == "S&C Magazine" and total > 10 and not category:
+                lines.append(f"\n**S&C Magazine** ({total} articles — use search_books with category='S&C Magazine' to search)")
+                continue
             lines.append(f"\n**{cat}**")
+        if current_cat == "S&C Magazine" and not category:
+            continue  # Skip individual S&C entries in full listing
+        cat_count += 1
         status_str = f" [{status}]" if status != "completed" else ""
         date_str = date_added[:10] if date_added else "?"
         lines.append(f"  - {title} — {author} ({chunks} chunks, {date_str}){status_str}")
