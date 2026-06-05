@@ -21,11 +21,16 @@ EPUB, MOBI, AZW3, AZW, PDF, TXT — requires [Calibre](https://calibre-ebook.com
 2. Call `ingest_books` — the system:
    - Converts to plain text via Calibre's `ebook-convert`
    - Splits into ~1500-character chunks with overlap
-   - Generates embeddings via Gemini (`gemini-embedding-exp-03-07`)
-   - Auto-categorizes via Gemini (`gemini-2.0-flash`)
+   - Generates embeddings via Gemini (`gemini-embedding-001`)
+   - Auto-categorizes via Gemini (`gemini-2.5-flash`)
    - Stores in ChromaDB (vectors) + SQLite (metadata)
    - Moves the original to `processed/`
 3. Search with natural language queries
+
+> **Deployment runbook:** see [`README.txt`](README.txt) for the live setup —
+> the launchd inbox auto-watcher, EPUB > MOBI > PDF format preference,
+> Mac Studio-only indexing + nightly mirror cron to Mac mini, and manual
+> re-trigger commands.
 
 ## Prerequisites
 
