@@ -64,7 +64,7 @@ EBOOK_CONVERT = os.environ.get("CALIBRE_EBOOK_CONVERT",
 
 SUPPORTED_FORMATS = {'.epub', '.mobi', '.azw3', '.azw', '.pdf', '.txt'}
 EMBEDDING_MODEL = "gemini-embedding-001"
-CLASSIFICATION_MODEL = "gemini-2.0-flash"
+CLASSIFICATION_MODEL = "gemini-2.5-flash"
 CHUNK_SIZE = 1500  # characters
 CHUNK_OVERLAP = 200  # characters
 EMBEDDING_BATCH_SIZE = 100
@@ -348,6 +348,26 @@ def convert_to_text(file_path: str) -> str:
 # Ingestion Pipeline
 # ---------------------------------------------------------------------------
 
+def _purge_book(conn: sqlite3.Connection, book_id: int) -> None:
+    """Remove all traces of a book (SQLite rows + ChromaDB vectors).
+
+    Used to clear a stale record from a prior failed ingestion before
+    re-ingesting the same file. The failed row holds the UNIQUE file_hash,
+    so without this it would block the file forever as a "duplicate".
+    """
+    # Best-effort ChromaDB cleanup. A failure usually dies before any vectors
+    # are written, but a partial collection.add() is possible, so purge anyway.
+    try:
+        collection = get_chroma_collection()
+        collection.delete(where={"book_id": book_id})
+    except Exception as e:
+        logger.warning(f"ChromaDB cleanup for book_id={book_id} failed (continuing): {e}")
+
+    conn.execute("DELETE FROM book_texts WHERE book_id=?", (book_id,))
+    conn.execute("DELETE FROM books WHERE id=?", (book_id,))
+    conn.commit()
+
+
 def ingest_single_book(file_path: str, conn: sqlite3.Connection) -> dict:
     """Ingest a single book file. Returns result dict with status and details."""
     file_path = os.path.abspath(file_path)
@@ -358,9 +378,23 @@ def ingest_single_book(file_path: str, conn: sqlite3.Connection) -> dict:
     file_hash = calculate_file_hash(file_path)
 
     # Check for duplicate
-    existing = conn.execute("SELECT title FROM books WHERE file_hash=?", (file_hash,)).fetchone()
+    existing = conn.execute(
+        "SELECT id, title, ingestion_status FROM books WHERE file_hash=?", (file_hash,)
+    ).fetchone()
     if existing:
-        return {"status": "skipped", "reason": f"Duplicate of '{existing[0]}'", "file": Path(file_path).name}
+        existing_id, existing_title, existing_status = existing
+        if existing_status == 'failed':
+            # Stale record from a prior failed ingestion (e.g. a retired
+            # classifier model or transient API error). It carries the UNIQUE
+            # file_hash but has no usable chunks, so it would otherwise block
+            # this file forever as a "duplicate". Purge it and re-ingest.
+            logger.warning(
+                f"Purging failed prior ingestion of '{existing_title}' "
+                f"(id={existing_id}) and re-ingesting {Path(file_path).name}"
+            )
+            _purge_book(conn, existing_id)
+        else:
+            return {"status": "skipped", "reason": f"Duplicate of '{existing_title}'", "file": Path(file_path).name}
 
     # Extract metadata
     title, author = extract_metadata_from_filename(file_path)
@@ -771,11 +805,27 @@ async def handle_get_library_status(arguments: dict) -> Sequence[TextContent]:
         for title, cat, date in recent:
             lines.append(f"  - {title} [{cat}] ({date[:10]})")
 
+    if failed_books:
+        lines.append(
+            f"\n⚠️  {failed_books} failed ingestion(s) recorded. Re-adding the same "
+            f"file now purges the stale record and retries automatically."
+        )
+
     lines.append(f"\nPaths:")
     lines.append(f"  Database: {DB_PATH}")
     lines.append(f"  ChromaDB: {CHROMA_PATH}")
     lines.append(f"  Inbox: {INBOX_PATH}")
     lines.append(f"  Collections: {COLLECTIONS_PATH}")
+
+    lines.append(f"\nHow it works:")
+    lines.append(f"  • Add a book: drop ONE file in the inbox above — a launchd")
+    lines.append(f"    folder-watcher (Mac Studio) auto-ingests it. No manual step.")
+    lines.append(f"  • Format preference (if a book ships several): EPUB > MOBI > PDF.")
+    lines.append(f"    EPUB extracts cleanest (code intact); PDF garbles code/layout.")
+    lines.append(f"  • Indexing runs on Mac Studio only. A 03:30 cron syncs a")
+    lines.append(f"    read-only mirror to Mac mini (Mac mini does NO indexing).")
+    lines.append(f"  • Manual re-trigger: launchctl start com.locupleto.book-library-ingest")
+    lines.append(f"    (or call the ingest_books tool). Ingest log: ~/.book-library/ingest.log")
 
     return [TextContent(type="text", text="\n".join(lines))]
 
@@ -791,7 +841,12 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="ingest_books",
             description="Scan a folder for new ebooks, convert to text, chunk, embed with Gemini, "
-                        "auto-categorize, and add to the library. Supports EPUB, MOBI, AZW3, PDF, TXT.",
+                        "auto-categorize, and add to the library. Supports EPUB, MOBI, AZW3, PDF, TXT. "
+                        "Dropping a file into the inbox already auto-ingests it via a launchd "
+                        "folder-watcher (Mac Studio) — this tool is for manual/explicit runs. "
+                        "When a book ships in several formats, prefer EPUB > MOBI > PDF: EPUB gives the "
+                        "cleanest text (code listings stay intact); PDF garbles code/multi-column layouts. "
+                        "Add only ONE format per book to avoid duplicate ingestion.",
             inputSchema={
                 "type": "object",
                 "properties": {
