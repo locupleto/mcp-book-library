@@ -19,12 +19,12 @@ MCP server for querying a personal ebook library. Converts books to text via Cal
 
 - **SQLite** (`~/.book-library/book_library.db`) — book metadata + full text
 - **ChromaDB** (`~/.book-library/chroma/`) — chunked text + Gemini embeddings
-- **Gemini** — `gemini-embedding-exp-03-07` for embeddings, `gemini-2.0-flash` for classification
+- **Gemini** — `gemini-embedding-001` for embeddings, `gemini-2.5-flash` for classification
 - **Calibre** — `ebook-convert` for format conversion (EPUB, MOBI, AZW3, PDF → TXT)
 
 ## Workflow
 
-1. User drops ebook in `/Volumes/Documents/BookInbox/`
+1. User drops ebook in `/Volumes/Documents/BookLibrary/inbox/`
 2. `ingest_books()` converts, chunks, embeds, categorizes, indexes
 3. `search_books(query)` finds semantically relevant passages
 

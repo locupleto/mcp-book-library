@@ -1,5 +1,5 @@
 #!/bin/bash
-# ingest_watcher.sh — Triggered by launchd when files appear in BookInbox
+# ingest_watcher.sh — Triggered by launchd when files appear in the inbox
 # Waits a few seconds for file copy to complete, then ingests new books
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -14,7 +14,7 @@ echo "=== Ingest triggered $(date) ===" >> "$LOG_FILE"
 sleep 3
 
 GEMINI_API_KEY="${GEMINI_API_KEY}" \
-BOOK_LIBRARY_INBOX="${BOOK_LIBRARY_INBOX:-/Volumes/Documents/BookInbox}" \
+BOOK_LIBRARY_INBOX="${BOOK_LIBRARY_INBOX:-/Volumes/Documents/BookLibrary/inbox}" \
 CALIBRE_EBOOK_CONVERT="${CALIBRE_EBOOK_CONVERT:-/opt/homebrew/bin/ebook-convert}" \
 $VENV -c "
 import asyncio

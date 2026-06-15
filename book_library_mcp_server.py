@@ -468,6 +468,10 @@ def ingest_single_book(file_path: str, conn: sqlite3.Connection) -> dict:
                 counter += 1
             shutil.move(file_path, dest)
 
+        # Record the final on-disk location (book now lives under collections/<category>/)
+        conn.execute("UPDATE books SET file_path=? WHERE id=?", (dest, book_id))
+        conn.commit()
+
         logger.info(f"Ingested '{title}' [{category}] — {len(chunks)} chunks")
         return {
             "status": "completed", "title": title, "author": author,
