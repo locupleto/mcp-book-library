@@ -31,6 +31,13 @@ EPUB, MOBI, AZW3, AZW, PDF, TXT — requires [Calibre](https://calibre-ebook.com
 > the launchd inbox auto-watcher, EPUB > MOBI > PDF format preference,
 > Mac Studio-only indexing + nightly mirror cron to Mac mini, and manual
 > re-trigger commands.
+>
+> **Mirror lag:** a book ingested during the day is live on Mac Studio
+> immediately, but only reaches the Mac mini read-only mirror after the
+> nightly 03:30 sync (or a manual `sync_book_library.sh` run). Mirror
+> consumers must reconnect their MCP server afterward — a long-running MCP
+> process caches the ChromaDB index in memory and returns stale results
+> (or `Error finding id`) until it reconnects.
 
 ## Prerequisites
 

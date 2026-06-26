@@ -828,6 +828,9 @@ async def handle_get_library_status(arguments: dict) -> Sequence[TextContent]:
     lines.append(f"    EPUB extracts cleanest (code intact); PDF garbles code/layout.")
     lines.append(f"  • Indexing runs on Mac Studio only. A 03:30 cron syncs a")
     lines.append(f"    read-only mirror to Mac mini (Mac mini does NO indexing).")
+    lines.append(f"  • Mirror lag: a same-day ingest is NOT on the Mac mini mirror")
+    lines.append(f"    until the next 03:30 sync. Push early with sync_book_library.sh,")
+    lines.append(f"    then reconnect the consumer's MCP server so it reloads the index.")
     lines.append(f"  • Manual re-trigger: launchctl start com.locupleto.book-library-ingest")
     lines.append(f"    (or call the ingest_books tool). Ingest log: ~/.book-library/ingest.log")
 
@@ -850,7 +853,10 @@ async def list_tools() -> list[Tool]:
                         "folder-watcher (Mac Studio) — this tool is for manual/explicit runs. "
                         "When a book ships in several formats, prefer EPUB > MOBI > PDF: EPUB gives the "
                         "cleanest text (code listings stay intact); PDF garbles code/multi-column layouts. "
-                        "Add only ONE format per book to avoid duplicate ingestion.",
+                        "Add only ONE format per book to avoid duplicate ingestion. "
+                        "MIRROR LAG: a newly ingested book is live on Mac Studio immediately, but only reaches "
+                        "the Mac mini read-only mirror after the nightly 03:30 sync (or a manual sync_book_library.sh "
+                        "run); mirror consumers must reconnect their MCP server afterward to load it.",
             inputSchema={
                 "type": "object",
                 "properties": {

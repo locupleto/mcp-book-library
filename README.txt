@@ -45,6 +45,17 @@ NIGHTLY SYNC to Mac mini (crontab on Mac Studio, 03:30):
   * Pushes the library to Mac mini (daily sync_YYYYMMDD.log files).
   * Mac mini holds a MIRROR only -- it does NO indexing.
 
+  !! MIRROR LAG -- a book ingested during the day is live on Mac Studio
+     immediately, but does NOT appear on the Mac mini mirror until the next
+     03:30 sync. To publish it sooner, run the sync manually on Mac Studio:
+         /Volumes/Work/development/projects/git/mcp-book-library/sync_book_library.sh
+     Then RECONNECT the consumer's MCP server (/mcp -> book-library ->
+     Reconnect, or restart its client) so it reloads the freshly-synced
+     ChromaDB. A long-running MCP process caches the index in memory and will
+     keep returning stale results -- or fail with "Error finding id" -- until
+     it reconnects. This applies on Mac Studio too after any out-of-band
+     change (manual purge/re-ingest), not just on the mirror.
+
 ------------------------------------------------------------------------------
  PATHS
 ------------------------------------------------------------------------------
