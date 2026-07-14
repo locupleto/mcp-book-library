@@ -268,6 +268,22 @@ def extract_metadata_from_filename(file_path: str) -> tuple[str, str]:
     return name, "Unknown"
 
 
+SC_ISSUE_CODE_RE = re.compile(r'(V\d+_C\d+)')
+
+
+def extract_sc_code(file_path: str) -> str | None:
+    """Extract the S&C issue code (e.g. 'V44_C07') from a file path's basename.
+
+    S&C Magazine articles are named like '.../V44_C07_146GARN.pdf' where V44
+    is volume 44 and C07 is issue 7 (July). Returns None for books that don't
+    carry this pattern (i.e. everything that isn't an S&C article).
+    """
+    if not file_path:
+        return None
+    match = SC_ISSUE_CODE_RE.search(Path(file_path).stem)
+    return match.group(1) if match else None
+
+
 def split_text_into_chunks(text: str, chunk_size: int = CHUNK_SIZE,
                            overlap: int = CHUNK_OVERLAP) -> list[str]:
     """Split text into overlapping chunks using recursive character splitting."""
@@ -609,13 +625,29 @@ async def handle_search_books(arguments: dict) -> Sequence[TextContent]:
     if not results or not results.get("documents") or not results["documents"][0]:
         return [TextContent(type="text", text=f"No results found for '{query}'.")]
 
+    # Look up S&C issue codes (derived from file_path, not stored in ChromaDB metadata)
+    book_ids = {meta['book_id'] for meta in results["metadatas"][0] if 'book_id' in meta}
+    sc_code_by_book_id: dict[int, str] = {}
+    if book_ids:
+        conn = get_db()
+        placeholders = ",".join("?" for _ in book_ids)
+        for book_id, file_path in conn.execute(
+            f"SELECT id, file_path FROM books WHERE id IN ({placeholders})", tuple(book_ids)
+        ).fetchall():
+            code = extract_sc_code(file_path)
+            if code:
+                sc_code_by_book_id[book_id] = code
+        conn.close()
+
     lines = [f"Search results for '{query}' ({len(results['documents'][0])} matches):\n"]
     for i, (doc, meta, dist) in enumerate(zip(
         results["documents"][0], results["metadatas"][0], results["distances"][0]
     )):
         score = 1 - dist  # cosine distance → similarity
         lines.append(f"--- Result {i+1} (relevance: {score:.2f}) ---")
-        lines.append(f"Book: {meta['book_title']} by {meta['author']} [{meta['category']}]")
+        sc_code = sc_code_by_book_id.get(meta.get('book_id'))
+        code_str = f" [{sc_code}]" if sc_code else ""
+        lines.append(f"Book: {meta['book_title']} by {meta['author']} [{meta['category']}]{code_str}")
         lines.append(f"Position: chunk {meta['chunk_index']+1}/{meta['total_chunks']}")
         article_pdf = meta.get('article_pdf')
         magazine_pdf = meta.get('magazine_pdf')
@@ -684,8 +716,31 @@ async def handle_ask_about_book(arguments: dict) -> Sequence[TextContent]:
 async def handle_list_books(arguments: dict) -> Sequence[TextContent]:
     """List all books in the library."""
     category = arguments.get("category")
+    issue = arguments.get("issue", "").strip() or None
 
     conn = get_db()
+
+    if issue:
+        # S&C issue-level listing: bypass category grouping and the S&C-skip
+        # behavior below, list every article in the issue individually.
+        rows = conn.execute(
+            "SELECT title, author, chunk_count, file_path FROM books "
+            "WHERE file_path LIKE '%' || ? || '%' ORDER BY file_path",
+            (issue,)
+        ).fetchall()
+        conn.close()
+
+        if not rows:
+            return [TextContent(type="text", text=f"No articles found for issue '{issue}'.")]
+
+        lines = [f"S&C issue {issue} ({len(rows)} articles):\n"]
+        for title, author, chunks, file_path in rows:
+            code = extract_sc_code(file_path)
+            code_str = f" [{code}]" if code else ""
+            lines.append(f"  - {title} — {author} ({chunks} chunks){code_str}")
+
+        return [TextContent(type="text", text="\n".join(lines))]
+
     if category:
         rows = conn.execute(
             "SELECT title, author, category, date_added, chunk_count, ingestion_status FROM books WHERE category=? ORDER BY title",
@@ -719,7 +774,11 @@ async def handle_list_books(arguments: dict) -> Sequence[TextContent]:
             cat_count = 0
             total = cat_totals.get(cat, 0)
             if cat == "S&C Magazine" and total > 10 and not category:
-                lines.append(f"\n**S&C Magazine** ({total} articles — use search_books with category='S&C Magazine' to search)")
+                lines.append(
+                    f"\n**S&C Magazine** ({total} articles — use search_books with "
+                    f"category='S&C Magazine' to search, or list_books with "
+                    f"issue='V44_C07' to list one issue's articles)"
+                )
                 continue
             lines.append(f"\n**{cat}**")
         if current_cat == "S&C Magazine" and not category:
@@ -937,6 +996,10 @@ async def list_tools() -> list[Tool]:
                     "category": {
                         "type": "string",
                         "description": "Filter by category"
+                    },
+                    "issue": {
+                        "type": "string",
+                        "description": "S&C issue code like V44_C07 — lists that issue's articles"
                     }
                 },
                 "required": []
