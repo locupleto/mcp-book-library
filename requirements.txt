@@ -1,5 +1,5 @@
 # MCP Server Framework
-mcp>=1.9.2
+mcp>=2,<3
 
 # Vector database
 chromadb>=1.5.5
