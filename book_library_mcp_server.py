@@ -61,6 +61,9 @@ COLLECTIONS_PATH = os.environ.get("BOOK_LIBRARY_COLLECTIONS",
                                   "/Volumes/Documents/BookLibrary/collections")
 EBOOK_CONVERT = os.environ.get("CALIBRE_EBOOK_CONVERT",
                                "/opt/homebrew/bin/ebook-convert")
+# ebook-meta ships next to ebook-convert in every Calibre install
+EBOOK_META = os.environ.get("CALIBRE_EBOOK_META",
+                            str(Path(EBOOK_CONVERT).with_name("ebook-meta")))
 
 SUPPORTED_FORMATS = {'.epub', '.mobi', '.azw3', '.azw', '.pdf', '.txt'}
 EMBEDDING_MODEL = "gemini-embedding-001"
@@ -265,6 +268,67 @@ def extract_metadata_from_filename(file_path: str) -> tuple[str, str]:
     return name, "Unknown"
 
 
+# Ebook formats whose embedded metadata is set by the publisher (or Calibre) and
+# beats any filename guess. PDF metadata is too often junk ("Microsoft Word -
+# doc1.docx"), so PDFs keep the filename.
+EMBEDDED_META_FORMATS = {'.epub', '.mobi', '.azw3', '.azw'}
+
+
+def extract_embedded_metadata(file_path: str) -> tuple[str | None, str | None]:
+    """Title and author embedded in an ebook, via Calibre's ebook-meta.
+
+    Returns (None, None) when the format is not covered, Calibre is missing,
+    or the fields are empty/placeholder values."""
+    if Path(file_path).suffix.lower() not in EMBEDDED_META_FORMATS:
+        return None, None
+    try:
+        out = subprocess.run([EBOOK_META, file_path], capture_output=True,
+                             text=True, timeout=60).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None, None
+    fields = {}
+    for line in out.splitlines():
+        key, sep, value = line.partition(':')
+        if sep:
+            fields[key.strip().lower()] = value.strip()
+    title = fields.get('title') or None
+    author = fields.get('author(s)') or None
+    # Calibre appends the sort form: "John Wang & Grace Wang [Wang, John & Wang, Grace]"
+    if author:
+        author = re.sub(r'\s*\[[^\]]*\]$', '', author).strip() or None
+    if author:
+        # sort-order names ("Dalio, Ray") read naturally as "Ray Dalio"
+        author = ' & '.join(
+            ' '.join(reversed([p.strip() for p in part.split(',')])) if part.count(',') == 1 else part.strip()
+            for part in author.split('&')
+        )
+    if title and title.lower() in {'unknown', Path(file_path).stem.lower()}:
+        title = None
+    if author and author.lower() in {'unknown', 'unknown author'}:
+        author = None
+    return title, author
+
+
+def extract_book_metadata(file_path: str) -> tuple[str, str]:
+    """Title and author: embedded ebook metadata first, the filename as fallback."""
+    title, author = extract_metadata_from_filename(file_path)
+    meta_title, meta_author = extract_embedded_metadata(file_path)
+    if meta_title and meta_author:
+        return meta_title, meta_author
+    if meta_title:
+        # The filename split may have swapped the halves: whichever half is not
+        # the embedded title is the author.
+        if author.lower() == meta_title.lower():
+            author = title
+        return meta_title, author
+    if meta_author:
+        # Likewise, whichever half is not the embedded author is the title.
+        if title.lower() == meta_author.lower() and author != "Unknown":
+            title = author
+        return title, meta_author
+    return title, author
+
+
 SC_ISSUE_CODE_RE = re.compile(r'(V\d+_C\d+)')
 
 
@@ -410,7 +474,7 @@ def ingest_single_book(file_path: str, conn: sqlite3.Connection) -> dict:
             return {"status": "skipped", "reason": f"Duplicate of '{existing_title}'", "file": Path(file_path).name}
 
     # Extract metadata
-    title, author = extract_metadata_from_filename(file_path)
+    title, author = extract_book_metadata(file_path)
 
     # Insert book record (pending)
     cursor = conn.execute(

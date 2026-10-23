@@ -26,6 +26,8 @@ from book_library_mcp_server import (
     split_text_into_chunks,
     calculate_file_hash,
     extract_metadata_from_filename,
+    extract_book_metadata,
+    EBOOK_CONVERT,
     init_db,
     SUPPORTED_FORMATS,
     VALID_CATEGORIES,
@@ -175,6 +177,36 @@ def test_filename_extraction():
     test("book-drive.com artifact stripped",
          "book-drive" not in title,
          f"got title='{title}'")
+
+
+def test_embedded_metadata():
+    print("\n--- Group 3b: Embedded Ebook Metadata ---")
+    import shutil
+    import subprocess
+
+    tmp = tempfile.mkdtemp()
+    try:
+        src = os.path.join(tmp, "src.txt")
+        with open(src, "w") as f:
+            f.write("Chapter one.\n\nSome text.\n")
+        # the shorter-half heuristic reads this filename back to front
+        book = os.path.join(tmp, "AbleTrend - John Wang & Grace Wang.epub")
+        subprocess.run([EBOOK_CONVERT, src, book, "--title", "AbleTrend: Identifying Market Trends",
+                        "--authors", "Wang, John & Wang, Grace"], check=True, capture_output=True)
+        title, author = extract_book_metadata(book)
+        test("Embedded title wins over the filename",
+             title == "AbleTrend: Identifying Market Trends",
+             f"got title='{title}'")
+        test("Sort-order authors read naturally",
+             author == "John Wang & Grace Wang",
+             f"got author='{author}'")
+
+        title, author = extract_book_metadata("/books/How to Day Trade - Andrew Aziz.pdf")
+        test("PDF keeps the filename parse",
+             title == "How to Day Trade" and author == "Andrew Aziz",
+             f"got title='{title}', author='{author}'")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 # =========================================================================
@@ -342,6 +374,7 @@ def main():
     test_text_chunking()
     test_file_hash()
     test_filename_extraction()
+    test_embedded_metadata()
     test_database_operations()
     test_tool_validation()
     test_configuration()
